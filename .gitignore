@@ -1,0 +1,9 @@
+*.kdev4
+*.cbp
+*.user
+*.cmake
+.*.sw*
+CMakeFiles/
+Makefile
+.config_cache/
+CMakeCache.txt
