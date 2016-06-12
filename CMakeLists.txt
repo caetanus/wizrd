@@ -14,8 +14,6 @@ configure_file(
     "${PROJECT_CACHE_DIR}/wizrd_config.h"
     )
 
-
-
 # options section
 
 option(USE_FCGI
@@ -46,16 +44,12 @@ enable_testing()
 find_package(GTest REQUIRED)
 # find_package(hayai)
 
-# include_directories(${GTEST_BOTH_LIBRARIES})
 
 add_subdirectory(internal_webserver)
 add_subdirectory(Testing)
 
 
 aux_source_directory(src/ SRC_LIST)
-#FILE(GLOB SRC_LIST
-#    src/*.h
-#    src/*.cpp)
 
 set (CMAKE_CXX_STANDARD 14)
 
