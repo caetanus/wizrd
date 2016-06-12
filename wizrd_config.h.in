@@ -1,24 +1,8 @@
 #pragma once
 #define VERSION_MAJOR @wizrd_VERSION_MAJOR@
 #define VERSION_MINOR @wizrd_VERSION_MINOR@
-#define VERSION VERSION_MAJOR ## "." ## VERSION_MINOR
+#define VERSION "@wizrd_VERSION_MAJOR@.@wizrd_VERSION_MINOR@"
 
-#define ON true
-
-#define _CONF_USE_FCGI @USE_FCGI@
-#define _CONF_USE_CGI @USE_CGI@
-#define _CONF_USE_INTERNAL_SERVER @USE_INTERNAL_SERVER@
-
-#if _CONF_USE_FCGI == ON
-#define USE_FCGI
-#endif
-#if _CONF_USE_CGI == ON
-#define USE_CGI
-#endif
-#if _CONF_USE_INTERNAL_SERVER == ON
-#define USE_INTERNAL_SERVER
-#endif
-#undef _CONF_USE_FCGI
-#undef _CONF_USE_CGI
-#undef _CONF_USE_INTERNAL_SERVER
-
+#cmakedefine USE_FCGI
+#cmakedefine USE_LEGACY_CGI
+#cmakedefine USE_INTERNAL_SERVER

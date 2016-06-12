@@ -1,3 +1,5 @@
+*.autosave
+*.a
 *.kdev4
 *.cbp
 *.user
@@ -6,4 +8,6 @@
 CMakeFiles/
 Makefile
 .config_cache/
+lib/
+bin/
 CMakeCache.txt
