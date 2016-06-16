@@ -33,6 +33,8 @@
 #include <iomanip>
 #include <sstream>
 #include <cstdio>
+#include "exceptions.h"
+
 
 #ifndef EOF
 #define EOF (~0)
@@ -45,17 +47,8 @@ typedef std::map<std::string, std::string> paramsMap;
 
 static const std::string empty = std::string();
 
-class URLEncodeError: public std::exception {
-public:
-    inline URLEncodeError(std::string what)
-    : what_(what.c_str())
-    {}
-    inline const char* what() const throw()
-    {
-        return what_;
-    }
-private:
-    const char* what_;
+class URLEncodeError: BaseException {
+    using BaseException::BaseException;
 };
 
 class URL {
@@ -71,6 +64,7 @@ public:
     static std::string unquotePlus(const std::string& url);
 
 private:
+    URL() = delete;
     static std::string encodePair(const std::string& first, const std::string& second);
     static std::vector<std::string> decodePair(const std::string& url);
     static std::string quote_(const std::string& url, const std::string& safe, bool plus);

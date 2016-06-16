@@ -56,6 +56,7 @@ set (CMAKE_CXX_STANDARD 14)
 
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 target_compile_options(${PROJECT_NAME} PUBLIC -std=c++14 -Wall -Wfloat-conversion)
+target_link_libraries(${PROJECT_NAME} wizrd_util)
 
 
 add_subdirectory(src/utils)

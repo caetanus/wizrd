@@ -1,3 +1,29 @@
+/*
+ * Copyright (c) 2016 - Wizrd Team
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ *
+ */
+
 #include <iostream>
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -8,13 +34,12 @@ TEST(url_test_case, quote_test)
 {
     EXPECT_EQ(Wizrd::URL::quote("http://en.wikipedia.org/wiki/Percent encoding"), "http%3A//en.wikipedia.org/wiki/Percent%20encoding");
     EXPECT_EQ(Wizrd::URL::quote("abc def"), "abc%20def");
-
 }
+
 TEST(url_test_case, quote_plus_test)
 {
     EXPECT_EQ(Wizrd::URL::quotePlus("http://en.wikipedia.org/wiki/Percent encoding"), "http%3A//en.wikipedia.org/wiki/Percent+encoding");
     EXPECT_EQ(Wizrd::URL::quotePlus("abc def"), "abc+def");
-
 }
 
 TEST(url_test_case, unquote_test_regular)
@@ -71,14 +96,12 @@ TEST(url_test_case, url_decode_map_with_some_key_with_no_value)
 
 TEST(url_test_case, url_decode_empty)
 {
-
     auto result{Wizrd::URL::decode("")};
     Wizrd::params expect;
     EXPECT_EQ(result, expect);
 }
 TEST(url_test_case, url_decode_item_empty)
 {
-
     auto result{Wizrd::URL::decode("foo=&bar=+")};
     Wizrd::params expect{{"foo", ""}, {"bar", " "}};
     EXPECT_EQ(result, expect);
@@ -124,13 +147,16 @@ TEST(url_test_case, url_encode_empty)
     auto result2{Wizrd::URL::encode(map)};
     EXPECT_EQ(result1, expect);
     EXPECT_EQ(result2, expect);
-
 }
 
 TEST(url_test_case, url_encode_invalid_number_of_parameters_should_throw_URLEncodeError)
 {
-    //creating a parameter vector with itens with key, value and one item having 3 items (that is invalid)
+    // creating a parameter vector with items
+    // items should have one or two parameters,
+    // items with 0 or more than two parameters should throw URLEncodeError
     Wizrd::params params{{"foo", "bar"}, {"  foo  "}, {"a", "b", "c"}};
+    Wizrd::params params2{{}, {"  foo  "}, {"a", "b", "c"}};
     EXPECT_THROW(Wizrd::URL::encode(params), Wizrd::URLEncodeError);
+    EXPECT_THROW(Wizrd::URL::encode(params2), Wizrd::URLEncodeError);
 }
 
