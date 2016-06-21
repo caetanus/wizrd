@@ -1,5 +1,9 @@
 #include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
 #include <algorithm>
+#include <cstdio>
+#include <boost/utility/string_ref.hpp>
 #include "requestparser.h"
 #include "utils/url.h"
 
@@ -9,8 +13,18 @@ using namespace std::string_literals;
 
 RequestParser::RequestParser()
     :state_(Start),
-     consumed_(0)
+     consumedContent_(0)
 {
+}
+
+
+//initializing only what matters in the request;
+void RequestParser::reset(Request &request)
+{
+    request.contentLenght = -1;
+    request.keepAlive = false;
+    request.connectionTimeout = 15;
+    consumedContent_ = 0;
 }
 
 RequestParser::ResultType RequestParser::consume(Request &request, char chr)
@@ -28,18 +42,12 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
     // when there is a content lenght header, it should be respected
     // due to HTTP/1.1
     // the request.contentLenght must be initialized as -1 in Start case
-    if (state_ != Start && request.contentLenght != -1
-        && consumed_++ >= request.contentLenght) {
-        return Error;
-    }
 
     switch (state_)
     {
     case Start:
+        reset(request);
         state_ = Method;
-        //initializing only what matters in the request;
-        request.contentLenght = -1;
-        request.keepAlive = false;
     case Method:
         if (isUpperAlpha(chr))
             currentBuffer_ << chr;
@@ -106,15 +114,15 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
                 // the only versions of HTTP accepted is \d.\d
                 if (data.length() != 3)
                     return Error;
-                auto version = boost::lexical_cast<float>(data);
+                request.versionMajor = boost::lexical_cast<int>(data[0]);
+                request.versionMinor = boost::lexical_cast<int>(data[2]);
+
             }
             catch (boost::bad_lexical_cast)
             {
                 return Error;
             }
 
-            std::tie(request.versionMajor, request.versionMinor) = std::make_tuple(boost::lexical_cast<int>(data[0]),
-                                                                                   boost::lexical_cast<int>(data[2]));
             request.versionString = std::move(data);
             currentBuffer_.clear();
             currentBuffer_ << chr;
@@ -165,10 +173,18 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
 {
     static enum {
         ContentType,
-        ContentLenght
+        ContentLenght,
+        Connection,
+        KeepAlive,
+        Max,
+        Host
     } currentImportantHeader;
-    static std::unordered_map<std::string> importantHeaders{{"content-lenght", ContentLenght},
-                                                            {"content-type", ContentType}};
+    static std::unordered_map<std::string, decltype(currentImportantHeader)> importantHeaders{{"host", Host},
+                                                                                              {"content-lenght", ContentLenght},
+                                                                                              {"content-type", ContentType},
+                                                                                              {"connection", Connection},
+                                                                                              {"keep-alive", KeepAlive},
+                                                                                              {"max", Max}};
     static std::string currentHeader;
     switch(headerState_) {
     case Start:
@@ -182,11 +198,10 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
         if(isComma(chr))
         {
             const std::string& data = currentBuffer_.str();
-            std::string lowerData(data.size());
-            std::transform(data.begin(), data.end(), lowerData.begin(), std::tolower);
+            auto lowerData = std::move(boost::algorithm::to_lower_copy(data));
             const auto& header = importantHeaders.find(lowerData);
             if (header != importantHeaders.end()) {
-                currentImportantHeader = *header;
+                currentImportantHeader = header->second;
             }
             std::string currentHeader = data;
             currentBuffer_.clear();
@@ -211,15 +226,37 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
         }
         else {
             const auto& data = currentBuffer_.str();
-            request.headers.push_back(Header{std::move(currentHeader), data});
-            if (currentImportantHeader == ContentType)
+            switch (currentImportantHeader) {
+            case ContentType:
+                //@TODO: check it if multipart later
                 request.contentType = data;
-            else if (currentImportantHeader == ContentLenght)
-                request.contentLenght = boost::lexical_cast<int>(data);
-            currentHeader.clear();
+                break;
+            case ContentLenght:
+                try {
+                    request.contentLenght = boost::lexical_cast<int>(data);
+                }
+                catch(boost::bad_lexical_cast){
+                    return Error;
+                }
+
+                break;
+            case Connection:
+                request.keepAlive = boost::iequals("keep-alive", data);
+                break;
+            case KeepAlive:
+                std::string timeout (data.begin() + data.find('=') + 1, data.end());
+                try {
+                   request.connectionTimeout = boost::lexical_cast<int>(timeout);
+                }
+                catch (boost::bad_lexical_cast) {}
+                break;
+            }
+
+
+            request.headers.push_back(Header{std::move(currentHeader), data});
             currentBuffer_.clear();
             currentBuffer_ << chr;
-            headerState_ = Start;
+            headerState_ = HeaderStart;
         }
     }
 }

@@ -69,6 +69,8 @@ public:
         }
         return std::make_tuple(result, begin);
     }
+    void reset(Request &request);
+
 private:
     ResultType consume(Request& request, char chr);
     ResultType consumeHeaders(Request& request, char chr);
@@ -106,7 +108,7 @@ private:
     }
     bool isComma(const char chr) noexcept
     {
-        return chr = ':';
+        return chr == ':';
     }
 
     enum {
@@ -123,14 +125,14 @@ private:
         Data
     } state_;
     enum {
-        Start,
+        HeaderStart,
         Key,
         Space,
         Value,
-        NewLine
+        HeaderNewLine
     } headerState_;
+    int consumedContent_;
 
-    int consumed_;
 
     std::stringstream currentBuffer_;
 };
