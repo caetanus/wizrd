@@ -53,7 +53,7 @@ struct Request {
     std::string methodString;
     std::string versionString;
     bool keepAlive;
-    int keepALiveTimeout;
+    int connectionTimeout;
     int versionMajor;
     int versionMinor;
     Method method;
