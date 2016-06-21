@@ -25,10 +25,16 @@
  */
 
 #pragma once
+
 #include <string>
 #include <tuple>
-
+#include <sstream>
 #include "request.h"
+
+#include <unordered_map>
+#include <unordered_set>
+#include <map>
+#include <tuple>
 
 namespace Wizrd { namespace Server {
 
@@ -39,6 +45,8 @@ public:
     void reset();
     enum ResultType {Ok, Error, Processing};
 
+    // this parser works this way because read some has no guarantee to
+    // get all available data on request, so, that way the request is parsed partially
     template <class Iterator>
     std::tuple<Iterator, ResultType> parse(Request &request, Iterator begin,
                                            Iterator end)
@@ -47,20 +55,84 @@ public:
         while (begin != end) {
             result = consume(request, *begin++);
         }
+        if (result == end) {
+            switch (state_) {
+            case Data:
+                request.data = currentBuffer_.str();
+            case NewLine2:
+                result = Ok;
+                break;
+            default:
+                result = Error;
+            }
+
+        }
         return std::make_tuple(result, begin);
     }
 private:
-    ResultType consume(Request& request, char begin);
-    enum states {
+    ResultType consume(Request& request, char chr);
+    ResultType consumeHeaders(Request& request, char chr);
+    inline bool isLowerAlpha(const char chr) noexcept
+    {
+        return (chr >= 'a' && chr <= 'z');
+    }
+    inline bool isUpperAlpha(const char chr) noexcept
+    {
+        return (chr >= 'A' && chr <= 'Z');
+    }
+    inline bool isAlpha(const char chr) noexcept
+    {
+        return (isUpperAlpha(chr) || isLowerAlpha(chr));
+    }
+    inline bool isDigit(const char chr) noexcept
+    {
+        return (chr >= '0' && chr <= '9');
+    }
+    inline bool isFloat(const char chr) noexcept
+    {
+        return isDigit(chr) || chr == '.';
+    }
+    inline bool isSlash(const char chr) noexcept
+    {
+        return chr == '/';
+    }
+    inline bool isSpace(const char chr) noexcept
+    {
+        return chr == ' ';
+    }
+    bool isNewLine(const char chr) noexcept
+    {
+        return (chr == '\n' || chr == '\r');
+    }
+    bool isComma(const char chr) noexcept
+    {
+        return chr = ':';
+    }
+
+    enum {
         Start,
         Method,
+        Space_1,
         Url,
+        Space_2,
+        Http,
         Version,
-        Headers,
         NewLine,
-        Data,
-        EOF
+        Headers,
+        NewLine2,
+        Data
     } state_;
+    enum {
+        Start,
+        Key,
+        Space,
+        Value,
+        NewLine
+    } headerState_;
+
+    int consumed_;
+
+    std::stringstream currentBuffer_;
 };
 
 }}
