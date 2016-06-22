@@ -25,6 +25,8 @@ void RequestParser::reset(Request &request)
     request.keepAlive = false;
     request.connectionTimeout = 15;
     consumedContent_ = 0;
+    currentBuffer_.clear();
+    currentBuffer_.reserve(8192);
 }
 
 RequestParser::ResultType RequestParser::consume(Request &request, char chr)
@@ -50,10 +52,9 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
         state_ = Method;
     case Method:
         if (isUpperAlpha(chr))
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
         else if (isSpace(chr)) {
-            const auto& data = currentBuffer_.str();
-            const auto method = methodTable.find(data);
+            const auto method = methodTable.find(currentBuffer_);
 
             if (method != methodTable.end()) {
                 request.method = method->second;
@@ -61,7 +62,7 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
             else {
                 request.method = Method::CUSTOM;
             }
-            request.methodString = std::move(data);
+            request.methodString = std::move(currentBuffer_);
             currentBuffer_.clear();
             state_ = Space_1;
         }
@@ -75,13 +76,12 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
     case Url:
         if(isSpace(chr))
         {
-            const auto& data = currentBuffer_.str();
-            request.url = std::move(Wizrd::URL::unquotePlus(data));
+            request.url = std::move(currentBuffer_);
             state_ = Space_2;
             currentBuffer_.clear();
         }
         else
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
         break;
     case Space_2:
         if(!isSpace(chr))
@@ -89,10 +89,9 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
         break;
     case Http:
         if(isUpperAlpha(chr))
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
         else if (isSlash(chr)) {
-            const auto& data = currentBuffer_.str();
-            if (data == "HTTP") {
+            if (currentBuffer_== "HTTP") {
                 state_ = Version;
                 currentBuffer_.clear();
             }
@@ -104,18 +103,17 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
     case Version:
         if(isFloat(chr))
         {
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
         }
         else if(isNewLine(chr))
         {
-            const auto& data = currentBuffer_.str();
             state_ = NewLine;
             try{
                 // the only versions of HTTP accepted is \d.\d
-                if (data.length() != 3)
+                if (currentBuffer_.length() != 3 || currentBuffer_[1] != '.')
                     return Error;
-                request.versionMajor = boost::lexical_cast<int>(data[0]);
-                request.versionMinor = boost::lexical_cast<int>(data[2]);
+                request.versionMajor = boost::lexical_cast<int>(currentBuffer_[0]);
+                request.versionMinor = boost::lexical_cast<int>(currentBuffer_[2]);
 
             }
             catch (boost::bad_lexical_cast)
@@ -123,23 +121,22 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
                 return Error;
             }
 
-            request.versionString = std::move(data);
+            request.versionString = std::move(currentBuffer_);
             currentBuffer_.clear();
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
         }
         break;
     case NewLine:
         if(!isNewLine(chr)){
-            const auto& data = currentBuffer_.str();
-            if (data != "\r\n")
+            if (currentBuffer_!= "\r\n")
                 return Error;
             currentBuffer_.clear();
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
             state_ = Headers;
             headerState_ = Key;
         }
         else {
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
         }
         break;
     case Headers:
@@ -147,22 +144,30 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
         break;
     case NewLine2:
         if(!isNewLine(chr)){
-            const auto& data = currentBuffer_.str();
-            if (data != "\r\n\r\n")
+            if (currentBuffer_ != "\r\n\r\n")
                 return Error;
             currentBuffer_.clear();
+            if (request.contentLenght != -1)
+                currentBuffer_.reserve(request.contentLenght);
             state_ = Data;
         }
         else {
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
             break;
         }
     case Data:
-        if (isNewLine(chr)) {
+        // there actually two possible workflows here
+        // when you have content lenght (in a possible keep alive connection
+        // or when the connection is closed after the last byte
+        if (request.contentLenght == -1 ||
+            request.contentLenght > consumedContent_++)
+            currentBuffer_ += chr;
+        else if (request.contentLenght != -1) {
+            request.data = std::move(currentBuffer_);
+            currentBuffer_.clear();
+            consumedContent_ = 0;
+            state_ = Start;
             return Ok;
-        }
-        else {
-            currentBuffer_ << chr;
         }
 
     }
@@ -179,17 +184,19 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
         Max,
         Host
     } currentImportantHeader;
-    static std::unordered_map<std::string, decltype(currentImportantHeader)> importantHeaders{{"host", Host},
-                                                                                              {"content-lenght", ContentLenght},
-                                                                                              {"content-type", ContentType},
-                                                                                              {"connection", Connection},
-                                                                                              {"keep-alive", KeepAlive},
-                                                                                              {"max", Max}};
+
+    static std::unordered_map<std::string,
+                              decltype(currentImportantHeader)>  importantHeaders{{"host", Host},
+                                                                                  {"content-lenght", ContentLenght},
+                                                                                  {"content-type", ContentType},
+                                                                                  {"connection", Connection},
+                                                                                  {"keep-alive", KeepAlive},
+                                                                                  {"max", Max}};
     static std::string currentHeader;
     switch(headerState_) {
-    case Start:
+    case HeaderStart:
         if (isNewLine(chr)) {
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
             state_ = NewLine2;
             break;
         }
@@ -197,18 +204,17 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
     case Key:
         if(isComma(chr))
         {
-            const std::string& data = currentBuffer_.str();
-            auto lowerData = std::move(boost::algorithm::to_lower_copy(data));
+            auto lowerData = std::move(boost::algorithm::to_lower_copy(currentBuffer_));
             const auto& header = importantHeaders.find(lowerData);
             if (header != importantHeaders.end()) {
                 currentImportantHeader = header->second;
             }
-            std::string currentHeader = data;
+            std::string currentHeader = std::move(currentBuffer_);
             currentBuffer_.clear();
             headerState_ = Space;
         }
         else if (!isSpace(chr)) {
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
         }
         else {
             return Error;
@@ -222,18 +228,17 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
             break;
     case Value:
         if(!isNewLine(chr)) {
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
         }
         else {
-            const auto& data = currentBuffer_.str();
             switch (currentImportantHeader) {
             case ContentType:
                 //@TODO: check it if multipart later
-                request.contentType = data;
+                request.contentType = currentBuffer_;
                 break;
             case ContentLenght:
                 try {
-                    request.contentLenght = boost::lexical_cast<int>(data);
+                    request.contentLenght = boost::lexical_cast<int>(currentBuffer_);
                 }
                 catch(boost::bad_lexical_cast){
                     return Error;
@@ -241,10 +246,10 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
 
                 break;
             case Connection:
-                request.keepAlive = boost::iequals("keep-alive", data);
+                request.keepAlive = boost::iequals("keep-alive", currentBuffer_);
                 break;
             case KeepAlive:
-                std::string timeout (data.begin() + data.find('=') + 1, data.end());
+                boost::string_ref timeout(boost::string_ref(currentBuffer_).substr(currentBuffer_.find('=') + 1));
                 try {
                    request.connectionTimeout = boost::lexical_cast<int>(timeout);
                 }
@@ -253,9 +258,10 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
             }
 
 
-            request.headers.push_back(Header{std::move(currentHeader), data});
+            request.headers.push_back(Header{std::move(currentHeader),
+                                             std::move(currentBuffer_)});
             currentBuffer_.clear();
-            currentBuffer_ << chr;
+            currentBuffer_ += chr;
             headerState_ = HeaderStart;
         }
     }

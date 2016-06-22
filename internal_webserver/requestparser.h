@@ -55,17 +55,20 @@ public:
         while (begin != end) {
             result = consume(request, *begin++);
         }
-        if (result == end) {
+        if (result == Processing) {
+            result = Ok;
             switch (state_) {
             case Data:
-                request.data = currentBuffer_.str();
+                request.data = std::move(currentBuffer_);
+                break;
             case NewLine2:
-                result = Ok;
+                if (currentBuffer_ != "\r\n\r\n")
+                    result = Processing;
+
                 break;
             default:
-                result = Error;
+                result = Processing;
             }
-
         }
         return std::make_tuple(result, begin);
     }
@@ -134,7 +137,7 @@ private:
     int consumedContent_;
 
 
-    std::stringstream currentBuffer_;
+    std::string currentBuffer_;
 };
 
 }}
