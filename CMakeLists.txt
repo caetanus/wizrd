@@ -14,6 +14,8 @@ configure_file(
     "${PROJECT_CACHE_DIR}/wizrd_config.h"
     )
 
+set(QMAKE_CXXFLAGS ${QMAKE_CXXFLAGS} -std=c++14)
+
 # options section
 
 option(USE_FCGI
@@ -30,7 +32,7 @@ include_directories("${PROJECT_CACHE_DIR}")
 
 # find boost
 find_package(Boost 1.6.0 REQUIRED)
-find_package(Boost 1.6.0 COMPONENTS log REQUIRED)
+find_package(Boost 1.6.0 REQUIRED COMPONENTS log system thread regex)
 
 if(Boost_FOUND)
     add_definitions(${Boost_LIB_DIAGNOSTIC_DEFINITIONS})
@@ -52,6 +54,8 @@ add_subdirectory(Testing)
 aux_source_directory(src/ SRC_LIST)
 
 set (CMAKE_CXX_STANDARD 14)
+set (CXX_STANDARD_REQUIRED 14)
+set (CXX_STANDARD 14)
 
 
 add_executable(${PROJECT_NAME} ${SRC_LIST})

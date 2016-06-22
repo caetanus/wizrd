@@ -1,11 +1,16 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
+#include <boost/log/trivial.hpp>
 #include <algorithm>
-#include <cstdio>
 #include <boost/utility/string_ref.hpp>
+#include <boost/format.hpp>
+#include <ostream>
 #include "requestparser.h"
 #include "utils/url.h"
+#include <iostream>
+
+
 
 namespace Wizrd {
 namespace Server {
@@ -70,8 +75,10 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
             return Error;
         break;
     case Space_1:
-        if (!isSpace(chr))
+        if (!isSpace(chr)) {
             state_ = Url;
+            currentBuffer_ += chr;
+        }
         break;
     case Url:
         if(isSpace(chr))
@@ -84,8 +91,10 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
             currentBuffer_ += chr;
         break;
     case Space_2:
-        if(!isSpace(chr))
+        if(!isSpace(chr)) {
             state_ = Http;
+            currentBuffer_ += chr;
+        }
         break;
     case Http:
         if(isUpperAlpha(chr))
@@ -95,9 +104,15 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
                 state_ = Version;
                 currentBuffer_.clear();
             }
-            else return Error;
+            else {
+                BOOST_LOG_TRIVIAL(debug) << "error parsing http word";
+                BOOST_LOG_TRIVIAL(debug) << "EXPECTING 'HTTP', got " << currentBuffer_;
+                return Error;
+            }
         }
         else {
+            BOOST_LOG_TRIVIAL(debug) << "error parsing http word";
+            BOOST_LOG_TRIVIAL(debug) << "EXPECTING '/', got " << chr;
             return Error;
         }
     case Version:
@@ -110,8 +125,10 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
             state_ = NewLine;
             try{
                 // the only versions of HTTP accepted is \d.\d
-                if (currentBuffer_.length() != 3 || currentBuffer_[1] != '.')
+                if (currentBuffer_.length() != 3 || currentBuffer_[1] != '.') {
+                    BOOST_LOG_TRIVIAL(debug) << "expected \\d.\\d for http version, got " << currentHeader_;
                     return Error;
+                }
                 request.versionMajor = boost::lexical_cast<int>(currentBuffer_[0]);
                 request.versionMinor = boost::lexical_cast<int>(currentBuffer_[2]);
 
@@ -144,8 +161,9 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
         break;
     case NewLine2:
         if(!isNewLine(chr)){
-            if (currentBuffer_ != "\r\n\r\n")
+            if (currentBuffer_ != "\r\n") {
                 return Error;
+            }
             currentBuffer_.clear();
             if (request.contentLenght != -1)
                 currentBuffer_.reserve(request.contentLenght);
@@ -182,8 +200,9 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
         Connection,
         KeepAlive,
         Max,
-        Host
-    } currentImportantHeader;
+        Host,
+        None
+    } currentImportantHeader = None;
 
     static std::unordered_map<std::string,
                               decltype(currentImportantHeader)>  importantHeaders{{"host", Host},
@@ -202,14 +221,14 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
         }
         headerState_ = Key;
     case Key:
-        if(isComma(chr))
+        if(isCollon(chr))
         {
             auto lowerData = std::move(boost::algorithm::to_lower_copy(currentBuffer_));
             const auto& header = importantHeaders.find(lowerData);
             if (header != importantHeaders.end()) {
                 currentImportantHeader = header->second;
             }
-            std::string currentHeader = std::move(currentBuffer_);
+            currentHeader = std::move(currentBuffer_);
             currentBuffer_.clear();
             headerState_ = Space;
         }
@@ -231,39 +250,46 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
             currentBuffer_ += chr;
         }
         else {
-            switch (currentImportantHeader) {
-            case ContentType:
-                //@TODO: check it if multipart later
-                request.contentType = currentBuffer_;
-                break;
-            case ContentLenght:
-                try {
-                    request.contentLenght = boost::lexical_cast<int>(currentBuffer_);
-                }
-                catch(boost::bad_lexical_cast){
-                    return Error;
-                }
-
-                break;
-            case Connection:
-                request.keepAlive = boost::iequals("keep-alive", currentBuffer_);
-                break;
-            case KeepAlive:
-                boost::string_ref timeout(boost::string_ref(currentBuffer_).substr(currentBuffer_.find('=') + 1));
-                try {
-                   request.connectionTimeout = boost::lexical_cast<int>(timeout);
-                }
-                catch (boost::bad_lexical_cast) {}
-                break;
+            headerState_ = HeaderNewLine;
+        }
+        break;
+    case HeaderNewLine:
+        if(!isNewLine(chr))
+            return Error;
+        switch (currentImportantHeader) {
+        case Host:
+            request.host = currentBuffer_;
+            break;
+        case ContentType:
+            //@TODO: check it if multipart later
+            request.contentType = currentBuffer_;
+            break;
+        case ContentLenght:
+            try {
+            request.contentLenght = boost::lexical_cast<int>(currentBuffer_);
+        }
+            catch(boost::bad_lexical_cast){
+                return Error;
             }
 
-
-            request.headers.push_back(Header{std::move(currentHeader),
-                                             std::move(currentBuffer_)});
-            currentBuffer_.clear();
-            currentBuffer_ += chr;
-            headerState_ = HeaderStart;
+            break;
+        case Connection:
+            request.keepAlive = boost::iequals("keep-alive", currentBuffer_);
+            break;
+        case KeepAlive:
+            boost::string_ref timeout(currentBuffer_);
+            timeout.remove_suffix(currentBuffer_.find('=') + 1);
+            try {
+            request.connectionTimeout = boost::lexical_cast<int>(timeout);
         }
+            catch (boost::bad_lexical_cast) {}
+            break;
+        }
+        currentImportantHeader = None;
+
+        request.headers.push_back({std::move(currentHeader),
+                                   std::move(currentBuffer_)});
+        headerState_ = HeaderStart;
     }
 }
 

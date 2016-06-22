@@ -28,6 +28,7 @@
 
 #include <string>
 #include <tuple>
+#include <ostream>
 #include <sstream>
 #include "request.h"
 
@@ -35,6 +36,7 @@
 #include <unordered_set>
 #include <map>
 #include <tuple>
+
 
 namespace Wizrd { namespace Server {
 
@@ -51,8 +53,8 @@ public:
     std::tuple<Iterator, ResultType> parse(Request &request, Iterator begin,
                                            Iterator end)
     {
-        ResultType result;
-        while (begin != end) {
+        ResultType result = Processing;
+        while (begin != end && result != Error) {
             result = consume(request, *begin++);
         }
         if (result == Processing) {
@@ -70,7 +72,7 @@ public:
                 result = Processing;
             }
         }
-        return std::make_tuple(result, begin);
+        return std::make_tuple(begin, result);
     }
     void reset(Request &request);
 
@@ -109,7 +111,7 @@ private:
     {
         return (chr == '\n' || chr == '\r');
     }
-    bool isComma(const char chr) noexcept
+    bool isCollon(const char chr) noexcept
     {
         return chr == ':';
     }
@@ -138,6 +140,7 @@ private:
 
 
     std::string currentBuffer_;
+    std::string currentHeader_;
 };
 
 }}
