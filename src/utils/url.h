@@ -33,6 +33,7 @@
 #include <iomanip>
 #include <sstream>
 #include <cstdio>
+#include <boost/utility/string_ref.hpp>
 #include "exceptions.h"
 
 
@@ -56,19 +57,19 @@ public:
 
     static std::string encode(const params data) throw(URLEncodeError);
     static std::string encode(paramsMap data);
-    static params decode(const std::string& url);
-    static std::map<std::string, std::string> decodeMap(const std::string& url);
-    static std::string quote(const std::string& url,const std::string& safe = empty);
-    static std::string quotePlus(const std::string& url, const std::string& safe = empty);
-    static std::string unquote(const std::string& url);
-    static std::string unquotePlus(const std::string& url);
+    static params decode(boost::string_ref url);
+    static std::map<std::string, std::string> decodeMap(boost::string_ref url);
+    static std::string quote(boost::string_ref url, boost::string_ref safe = empty);
+    static std::string quotePlus(boost::string_ref url, boost::string_ref safe = empty);
+    static std::string unquote(boost::string_ref url);
+    static std::string unquotePlus(boost::string_ref url);
 
 private:
     URL() = delete;
-    static std::string encodePair(const std::string& first, const std::string& second);
-    static std::vector<std::string> decodePair(const std::string& url);
-    static std::string quote_(const std::string& url, const std::string& safe, bool plus);
-    static std::string unquote_(const std::string& url, bool plus);
+    static std::string encodePair(boost::string_ref first, boost::string_ref second);
+    static std::vector<std::string> decodePair(boost::string_ref url);
+    static std::string quote_(boost::string_ref url, boost::string_ref safe, bool plus);
+    static std::string unquote_(boost::string_ref url, bool plus);
 
     static inline bool validQuoteChar(char value) noexcept {
         return  ((value >= 'A' && value <= 'Z') ||

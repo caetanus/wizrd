@@ -1,5 +1,6 @@
 *.autosave
 Temporary/
+.idea/
 *.a
 *.kdev4
 *.cbp

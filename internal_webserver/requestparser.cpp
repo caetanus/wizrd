@@ -1,11 +1,8 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/log/trivial.hpp>
-#include <algorithm>
 #include <boost/utility/string_ref.hpp>
 #include <boost/format.hpp>
-#include <ostream>
 #include "requestparser.h"
 #include "utils/url.h"
 #include <iostream>
@@ -15,6 +12,8 @@
 namespace Wizrd {
 namespace Server {
 using namespace std::string_literals;
+
+#define LOG BOOST_LOG_TRIVIAL(debug)
 
 RequestParser::RequestParser()
     :state_(Start),
@@ -26,7 +25,7 @@ RequestParser::RequestParser()
 //initializing only what matters in the request;
 void RequestParser::reset(Request &request)
 {
-    request.contentLenght = -1;
+    request.contentLength = -1;
     request.keepAlive = false;
     request.connectionTimeout = 15;
     consumedContent_ = 0;
@@ -46,9 +45,9 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
                                                                               {"CONNECT", Method::CONNECT},
                                                                               {"PATCH", Method::PATCH}};
 
-    // when there is a content lenght header, it should be respected
+    // when there is a content length header, it should be respected
     // due to HTTP/1.1
-    // the request.contentLenght must be initialized as -1 in Start case
+    // the request.contentLength must be initialized as -1 in Start case
 
     switch (state_)
     {
@@ -145,7 +144,7 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
         break;
     case NewLine:
         if(!isNewLine(chr)){
-            if (currentBuffer_!= "\r\n")
+            if (currentBuffer_ != "\r\n")
                 return Error;
             currentBuffer_.clear();
             currentBuffer_ += chr;
@@ -158,15 +157,14 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
         break;
     case Headers:
         return consumeHeaders(request, chr);
-        break;
     case NewLine2:
         if(!isNewLine(chr)){
             if (currentBuffer_ != "\r\n") {
                 return Error;
             }
             currentBuffer_.clear();
-            if (request.contentLenght != -1)
-                currentBuffer_.reserve(request.contentLenght);
+            if (request.contentLength != -1)
+                currentBuffer_.reserve(request.contentLength);
             state_ = Data;
         }
         else {
@@ -177,10 +175,9 @@ RequestParser::ResultType RequestParser::consume(Request &request, char chr)
         // there actually two possible workflows here
         // when you have content lenght (in a possible keep alive connection
         // or when the connection is closed after the last byte
-        if (request.contentLenght == -1 ||
-            request.contentLenght > consumedContent_++)
+        if (request.contentLength == -1 || request.contentLength > consumedContent_++)
             currentBuffer_ += chr;
-        else if (request.contentLenght != -1) {
+        else if (request.contentLength != -1) {
             request.data = std::move(currentBuffer_);
             currentBuffer_.clear();
             consumedContent_ = 0;
@@ -196,7 +193,7 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
 {
     static enum {
         ContentType,
-        ContentLenght,
+        ContentLength,
         Connection,
         KeepAlive,
         Max,
@@ -206,7 +203,7 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
 
     static std::unordered_map<std::string,
                               decltype(currentImportantHeader)>  importantHeaders{{"host", Host},
-                                                                                  {"content-lenght", ContentLenght},
+                                                                                  {"content-length", ContentLength},
                                                                                   {"content-type", ContentType},
                                                                                   {"connection", Connection},
                                                                                   {"keep-alive", KeepAlive},
@@ -264,17 +261,17 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
             //@TODO: check it if multipart later
             request.contentType = currentBuffer_;
             break;
-        case ContentLenght:
+        case ContentLength:
             try {
-            request.contentLenght = boost::lexical_cast<int>(currentBuffer_);
-        }
+                request.contentLength = boost::lexical_cast<int>(currentBuffer_);
+            }
             catch(boost::bad_lexical_cast){
                 return Error;
             }
 
             break;
         case Connection:
-            request.keepAlive = boost::iequals("keep-alive", currentBuffer_);
+            request.keepAlive = boost::iequals(currentBuffer_, "keep-alive");
             break;
         case KeepAlive:
             boost::string_ref timeout(currentBuffer_);
@@ -291,6 +288,7 @@ RequestParser::ResultType RequestParser::consumeHeaders(Request &request, char c
                                    std::move(currentBuffer_)});
         headerState_ = HeaderStart;
     }
+    return Processing;
 }
 
 

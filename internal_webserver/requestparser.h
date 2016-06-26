@@ -54,7 +54,7 @@ public:
                                            Iterator end)
     {
         ResultType result = Processing;
-        while (begin != end && result != Error) {
+        while ((begin != end) && (result == Processing)) {
             result = consume(request, *begin++);
         }
         if (result == Processing) {

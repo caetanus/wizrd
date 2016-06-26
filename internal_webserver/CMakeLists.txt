@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 2.6)
-project(wizrd_internal_ws)
+cmake_minimum_required(VERSION 3.1)
+project(wizrd_ws)
 
 file(GLOB WS_SRC
     "./*.cpp"
@@ -7,5 +7,6 @@ file(GLOB WS_SRC
 
 include_directories(".")
 
-add_library(wizrd_ws STATIC
+
+add_library(wizrd_ws SHARED
             ${WS_SRC})

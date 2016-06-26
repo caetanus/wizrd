@@ -63,17 +63,17 @@ struct Request {
     int versionMinor;
     Method method;
     std::string contentType;
-    int contentLenght;
+    int contentLength;
     Headers headers;
     std::string data;
     inline std::string toString()
     {
         auto headerString = [](const Header& header) -> std::string {
             std::stringstream os;
-            os << "{" << header[0];
+            os << "{\"" << header[0] << '"';
             if (header.size() > 1)
             {
-                os << ": " << header[1];
+                os << ": \"" << header[1] << '"';
             }
             os << "}";
             return os.str();

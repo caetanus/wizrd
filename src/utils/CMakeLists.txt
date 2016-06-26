@@ -8,5 +8,5 @@ file(GLOB WS_SRC
 include_directories(".")
 include_directories("../src")
 
-add_library(wizrd_util STATIC
+add_library(wizrd_util SHARED
             ${WS_SRC})

@@ -28,6 +28,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "utils/url.h"
+#include <string>
 
 
 TEST(url_test_case, quote_test)
@@ -131,11 +132,11 @@ TEST(url_test_case, url_encode_common)
     std::string expect{"foo=bar&++foo++=ba%40"};
     auto result1{Wizrd::URL::encode(params)};
     auto result2{Wizrd::URL::encode(map)};
-    EXPECT_EQ(result1, expect);
+    EXPECT_EQ(expect, result1);
     // EXPECT_EQ(result2, expect);
     // not testing that because of the order,
     // try reencoding and see if the result is equal
-    EXPECT_EQ(Wizrd::URL::decodeMap(result2), map);
+    EXPECT_EQ(map, Wizrd::URL::decodeMap(result2));
 }
 
 TEST(url_test_case, url_encode_empty)
@@ -159,4 +160,3 @@ TEST(url_test_case, url_encode_invalid_number_of_parameters_should_throw_URLEnco
     EXPECT_THROW(Wizrd::URL::encode(params), Wizrd::URLEncodeError);
     EXPECT_THROW(Wizrd::URL::encode(params2), Wizrd::URLEncodeError);
 }
-

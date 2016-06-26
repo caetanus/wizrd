@@ -28,6 +28,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <boost/algorithm/string.hpp>
 #include <boost/log/trivial.hpp>
 
 namespace Wizrd {
@@ -36,56 +37,93 @@ namespace Wizrd {
 
 std::string URL::encode(const Wizrd::params data) throw(URLEncodeError)
 {
-    std::stringstream output;
+    std::string output;
+    int size = 0;
+
     if(!data.size()) {
-        return std::string();
+        return output;
     }
 
+    for (auto param: data) {
+        for(auto i = param.begin(); i < param.end(); i++) {
+            size += i->length();
+        }
+    }
+    output.reserve(size * 2);
+
+    bool first = true;
+
     for (auto pair: data) {
+        if(!first)
+            output += '&';
+        else
+            first = false;
         if (pair.size() == 1)
-            output << quotePlus(pair[0]) << '&';
+            output += quotePlus(pair[0]);
         else if (pair.size() == 2) {
-            output << encodePair(pair[0], pair[1]) << '&';
+            output += encodePair(pair[0], pair[1]);
         }
         else {
             throw URLEncodeError("Data content item should only have 1 or 2"
                                  "items");
         }
     }
-    auto v{std::move(output.str())};
-    return std::string(v.begin(), v.end() - 1);
+    output.shrink_to_fit();
+    return output;
 }
 
 std::string URL::encode(paramsMap data)
 {
-    std::stringstream output;
+    int size = 0;
+    std::string output;
     if (!data.size()) {
         return std::string();
     }
-    for(auto& kv: data) {
-        output << encodePair(kv.first, kv.second) << '&';
+
+    for (auto& kv: data) {
+        size += kv.first.length() + kv.second.length();
     }
-    auto v{std::move(output.str())};
-    return std::string(v.begin(), v.end() - 1);
+    output.reserve(size * 2);
+
+    bool first = true;
+
+    for(auto& kv: data) {
+        if (!first)
+            output += '&';
+        else
+            first = false;
+
+        output += encodePair(kv.first, kv.second);
+    }
+    output.shrink_to_fit();
+    return output;
 }
 
-params URL::decode(const std::string& url)
+params URL::decode(boost::string_ref url)
 {
+    using namespace boost;
     auto current{url.begin()};
+    int current_n = 0;
     params ret;
+
     if (url.empty())
         return ret;
-    for (auto i{url.begin()}; i != url.end(); i++) {
-        if (*i == '&') {
-            ret.push_back(std::move(decodePair(std::string(current, i))));
-            current = (i + 1);
+    size_t n = 0;
+    boost::string_ref url_fragment;
+    for (auto i: url) {
+        if (i == '&') {
+            url_fragment = url.substr(current_n, n);
+            ret.push_back(std::move(decodePair(url_fragment)));
+            current_n = (n + 1);
         }
+        n++;
     }
-    ret.push_back(std::move(decodePair(std::string(current, url.end()))));
+    url_fragment = url.substr(current_n, n);
+    ret.push_back(std::move(decodePair(url_fragment)));
     return ret;
 }
 
-std::map<std::string, std::string> URL::decodeMap(const std::string& url)
+std::map<std::string, std::string> URL::decodeMap(boost::string_ref url)
 {
     params data{std::move(decode(url))};
     std::map<std::string, std::string> output;
@@ -102,48 +140,48 @@ std::map<std::string, std::string> URL::decodeMap(const std::string& url)
 }
 
 
-std::string URL::quote(const std::string& url, const std::string& safe)
+std::string URL::quote(boost::string_ref url, boost::string_ref safe)
 {
-    return std::move(quote_(std::move(url), std::move(safe), false));
+    return std::move(quote_(url, safe, false));
 }
-std::string URL::quotePlus(const std::string& url, const std::string& safe)
+std::string URL::quotePlus(boost::string_ref url, boost::string_ref safe)
 {
-    return std::move(quote_(std::move(url), std::move(safe), true));
+    return std::move(quote_(url, safe, true));
 }
 
-std::string URL::unquote(const std::string& url)
+std::string URL::unquote(boost::string_ref url)
 {
     return unquote_(url, false);
 }
 
-std::string URL::unquotePlus(const std::string& url)
+std::string URL::unquotePlus(boost::string_ref url)
 {
-    return unquote_(std::move(url), true);
+    return unquote_(url, true);
 }
 
 
 // === private ===
 
-std::string URL::encodePair(const std::string& first, const std::string& second)
+std::string URL::encodePair(boost::string_ref first, boost::string_ref second)
 {
-    std::stringstream data;
-    data << quotePlus(first) << '=' << quotePlus(second);
-    return data.str();
+    std::string out{std::move(quotePlus(first))};
+    out += '=';
+    out += quotePlus(second);
+    return out;
 }
 
-std::vector<std::string> URL::decodePair(const std::string& url)
+std::vector<std::string> URL::decodePair(boost::string_ref url)
 {
     std::vector<std::string> out;
     out.reserve(2);
     size_t i = url.find_first_of('=');
     if (i == EOF)
     {
-        out.push_back(unquotePlus(url));
+        out.push_back(std::move(unquotePlus(url)));
     }
     else {
-        auto iterator = url.begin() + i;
-        auto first{std::string(url.begin(), iterator)};
-        auto second{std::string(iterator + 1, url.end())};
+        auto first{url.substr(0, i)};
+        auto second{url.substr(i + 1, url.size())};
         out.push_back(unquotePlus(first));
         out.push_back(unquotePlus(second));
     }
@@ -151,38 +189,39 @@ std::vector<std::string> URL::decodePair(const std::string& url)
 }
 
 
-std::string URL::quote_(const std::string& url, const std::string& safe, bool plus)
+std::string URL::quote_(boost::string_ref url, boost::string_ref safe, bool plus)
 {
-    std::vector<char> output;
+    std::string output;
     output.reserve(url.length() * 2);
     for(auto i: url) {
         if(plus && i == ' ') {
-            output.push_back('+');
+            output += '+';
         }
         else if (validQuoteChar(i) || ((!safe.empty()) && i == safe[0])) {
-            output.push_back(i);
+            output += i;
         }
         else {
-            output.push_back('%');
+            output += '%';
             auto ret{std::move(quoteChar(i))};
-            output.push_back(ret[0]);
-            output.push_back(ret[1]);
+            output += ret[0];
+            output += ret[1];
         }
     }
-    return std::string(output.begin(), output.end());
+    output.shrink_to_fit();
+    return output;
 }
 
-std::string URL::unquote_(const std::string& url, bool plus)
+std::string URL::unquote_(boost::string_ref url, bool plus)
 {
-    std::vector<char> output;
+    std::string output;
     output.reserve(url.length());
 
     for (auto i = url.begin(); i != url.end(); i++) {
         if (plus && (*i == '+')) {
-            output.push_back(' ');
+            output += ' ';
         }
         else if (*i != '%') {
-            output.push_back(*i);
+            output += *i;
         }
         else {
             char out, digit1, digit2;
@@ -191,7 +230,7 @@ std::string URL::unquote_(const std::string& url, bool plus)
             }
             else {
                 --i;
-                output.push_back('%');
+                output += '%';
                 continue;
             }
             if (++i != url.end()) {
@@ -200,29 +239,29 @@ std::string URL::unquote_(const std::string& url, bool plus)
             else {
                 --i;
                 --i;
-                output.push_back('%');
+                output += '%';
                 continue;
             }
             if (isHexDigit(digit1))
             {
                 if(isHexDigit(digit2)) {
                     out = (toHexNibble(digit1) << 4) | toHexNibble(digit2);
-                    output.push_back(out);
+                    output += out;
                 }
                 else {
-                    output.push_back('%');
-                    output.push_back(digit1);
+                    output += '%';
+                    output += digit1;
                     i--;
                     continue;
                 }
             }
             else {
-                output.push_back('%');
+                output += '%';
                 i -= 2;
             }
         }
     }
-    return std::string(output.begin(), output.end());
+    return output;
 }
 
 }
